@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Traccar Emulator for Raceradar</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-sA+e2x8y8iJjg/X43F2x5vJzK3Vjv6l0Y+5Z1GkZcWQ="
+          crossorigin=""/>
+    <style>
+        #map { height: 400px; margin-bottom: 1rem; }
+        .controls { margin-bottom: 1rem; }
+        .controls label { margin-right: 1rem; }
+        button { padding: 0.5rem 1rem; font-size: 1rem; }
+        #status { margin-top: 1rem; font-family: monospace; white-space: pre-wrap; background:#f8f8f8; padding:1rem; border:1px solid #ddd; max-height:200px; overflow:auto; }
+    </style>
+</head>
+<body>
+    <h1>Traccar Emulator → Raceradar OSMAND endpoint</h1>
+    <div class="controls">
+        <label>Tracking URL:
+            <input type="text" id="trackingUrl" placeholder="https://raceradar.de/ingest/osmand?token=…" size="50">
+        </label>
+        <br>
+        <label>GPX File:
+            <input type="file" id="gpxFile" accept=".gpx">
+        </label>
+        <br>
+        <label>Speed (seconds per point):
+            <input type="number" id="speedSec" value="1" min="0.1" step="0.1">
+        </label>
+        <label>
+            <input type="checkbox" id="sosChk"> Send SOS alarm
+        </label>
+        <br>
+        <button id="startBtn">Start Streaming</button>
+        <button id="stopBtn" disabled>Stop Streaming</button>
+    </div>
+    <div id="map"></div>
+    <div id="status">Ready.</div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-o9N1j7eVZKpG2U7vVZ+Gq1K5KzXJc8b3V+6Jc0aKk0o="
+            crossorigin=""></script>
+    <script>
+        const map = L.map('map').setView([50.73, 7.1], 13); // default Bonn
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+
+        let points = []; // array of {lat, lon, time, elevation?}
+        let timerId = null;
+        let idx = 0;
+        const statusEl = document.getElementById('status');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const trackingUrlInput = document.getElementById('trackingUrl');
+        const gpxFileInput = document.getElementById('gpxFile');
+        const speedSecInput = document.getElementById('speedSec');
+        const sosChk = document.getElementById('sosChk');
+
+        function log(msg) {
+            statusEl.textContent += msg + '\n';
+            statusEl.scrollTop = statusEl.scrollHeight;
+        }
+
+        // Parse GPX file
+        gpxFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const text = await file.text();
+            const parser = new DOMParser();
+            const xml = parser.parseFromString(text, 'application/xml');
+            const ns = xml.documentElement.namespaceURI || 'http://www.topografix.com/GPX/1/1';
+            const trkpts = xml.getElementsByTagNameNS(ns, 'trkpt');
+            points = [];
+            for (const pt of trkpts) {
+                const lat = parseFloat(pt.getAttribute('lat'));
+                const lon = parseFloat(pt.getAttribute('lon'));
+                let time = new Date(); // default now
+                const timeEl = pt.getElementsByTagNameNS(ns, 'time')[0];
+                if (timeEl && timeEl.textContent) {
+                    try {
+                        time = new Date(timeEl.textContent);
+                    } catch (_) {}
+                }
+                points.push({lat, lon, time});
+            }
+            if (points.length === 0) {
+                log('No track points found in GPX.');
+                return;
+            }
+            log(`Loaded ${points.length} points from GPX.`);
+            // Show first point on map
+            const first = points[0];
+            map.setView([first.lat, first.lon], 15);
+            L.marker([first.lat, first.lon]).addTo(map).bindPopup('Start').openPopup();
+        });
+
+        function sendPoint(lat, lon, timeStamp, sosFlag) {
+            const url = trackingUrlInput.value.trim();
+            if (!url) {
+                log('Error: Tracking URL not set.');
+                return false;
+            }
+            const data = new URLSearchParams();
+            data.append('lat', lat);
+            data.append('lon', lon);
+            data.append('alt', 0);
+            data.append('time', timeStamp.toISOString());
+            if (sosFlag) {
+                data.append('alarm', 'sos'); // as per osmand adapter
+                // alternatively data.append('sos', 'true');
+            }
+            fetch(url, {
+                method: 'POST',
+                body: data,
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                }
+            })
+            .then(resp => {
+                log(`Sent point (${lat.toFixed(6)},${lon.toFixed(6)}) at ${timeStamp.toISOString()} → ${resp.status}`);
+                // Update map with latest point
+                map.panTo([lat, lon]);
+                L.circleMarker([lat, lon], {radius: 4, color: sosFlag ? 'red' : 'blue'}).addTo(map);
+            })
+            .catch(err => {
+                log(`Error sending point: ${err}`);
+            });
+            return true;
+        }
+
+        startBtn.addEventListener('click', () => {
+            if (points.length === 0) {
+                log('Please load a GPX file first.');
+                return;
+            }
+            const url = trackingUrlInput.value.trim();
+            if (!url) {
+                log('Please enter a tracking URL.');
+                return;
+            }
+            idx = 0;
+            log('Starting stream...');
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            const intervalSec = parseFloat(speedSecInput.value) || 1;
+            timerId = setInterval(() => {
+                if (idx >= points.length) {
+                    log('Finished all points.');
+                    stopBtn.click();
+                    return;
+                }
+                const p = points[idx];
+                sendPoint(p.lat, p.lon, p.time, sosChk.checked);
+                idx++;
+            }, intervalSec * 1000);
+        });
+
+        stopBtn.addEventListener('click', () => {
+            if (timerId !== null) {
+                clearInterval(timerId);
+                timerId = null;
+                log('Stream stopped.');
+            }
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+    </script>
+</body>
+</html>
