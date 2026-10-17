@@ -12,7 +12,18 @@ ROOT = Path(__file__).resolve().parent
 
 
 def tracking_url(value):
-    url = urlsplit(value)
+    url = urlsplit(value.strip())
+    if url.scheme == 'org.traccar.client':
+        if url.netloc != 'config' or url.path not in ('', '/') or url.fragment:
+            raise ValueError('Invalid Traccar configuration link.')
+        params = dict(parse_qsl(url.query, keep_blank_values=True))
+        target = params.pop('url', None)
+        if not target:
+            raise ValueError('Traccar configuration link requires a server URL.')
+        url = urlsplit(target)
+        query = dict(parse_qsl(url.query, keep_blank_values=True))
+        query.update(params)
+        url = url._replace(query=urlencode(query))
     if (url.scheme != 'https' or url.hostname != 'raceradar.de'
             or url.port not in (None, 443) or url.username or url.password
             or url.path != '/ingest/osmand' or url.fragment):

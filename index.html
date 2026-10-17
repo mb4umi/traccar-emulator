@@ -1,61 +1,65 @@
 <!DOCTYPE html>
 <!-- SPDX-License-Identifier: GPL-3.0-only; Copyright (C) 2026 mb4umi -->
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Traccar Emulator</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 <style>
-*{box-sizing:border-box}body{font:14px system-ui,sans-serif;margin:24px auto;padding:0 16px;max-width:960px;color:#222;background:#fafafa}h1{font-size:22px;margin:0 0 20px}h2{font-size:15px;margin:0 0 12px}section{background:white;border:1px solid #ddd;padding:16px;margin-bottom:12px;border-radius:6px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}label{display:flex;flex-direction:column;gap:5px}input,select,button{font:inherit;padding:8px;border:1px solid #bbb;border-radius:4px;min-width:0}input:read-only{background:#f3f3f3;color:#555}button{cursor:pointer;background:white}button:disabled{opacity:.5;cursor:default}#startBtn{background:#222;color:white}#sosBtn{color:#b42318;border-color:#b42318}.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}p,small{color:#666}small{line-height:1.5}#map{height:300px;border:1px solid #ddd;border-radius:6px;margin-bottom:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px ui-monospace,monospace;margin:0}#status{max-height:160px;overflow:auto}#progress{margin-left:auto;align-self:center;color:#555}.wide{grid-column:1/-1}
+*{box-sizing:border-box}body{font:14px system-ui,sans-serif;margin:24px auto;padding:0 16px;max-width:960px;color:#222;background:#fafafa}h1{font-size:22px;margin:0 0 20px}h2{font-size:15px;margin:0 0 12px}section{background:white;border:1px solid #ddd;padding:16px;margin-bottom:12px;border-radius:6px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}label{display:flex;flex-direction:column;gap:5px}input,select,button{font:inherit;padding:8px;border:1px solid #bbb;border-radius:4px;min-width:0}input:read-only{background:#f3f3f3;color:#555}button{cursor:pointer;background:white}button:disabled{opacity:.5;cursor:default}#startBtn{background:#222;color:white}#sosBtn{color:#b42318;border-color:#b42318}.actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}p,small{color:#666}small{line-height:1.5}#map{height:300px;border:1px solid #ddd;border-radius:6px;margin-bottom:12px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px ui-monospace,monospace;margin:0}#status{max-height:160px;overflow:auto}#progress{margin-left:auto;align-self:center;color:#555}.wide{grid-column:1/-1}.device-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:12px;margin-top:16px}.device-row small{grid-column:1/-1}@media(max-width:600px){.device-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <h1>Traccar Emulator</h1>
 <section>
 <div class="grid">
-<label class="wide">Tracking-URL<input id="trackingUrl" type="text" placeholder="https://raceradar.de/ingest/osmand?id=…" autocomplete="off"></label>
-<label class="wide">GPX-Datei<input id="gpxFile" type="file" accept=".gpx"></label>
-<label>Interval · Sendeabstand (Sekunden)<input id="speedSec" type="number" min="0.1" step="0.1" value="10"></label>
-<label>Current speed (km/h)<input id="speed" type="number" min="0.1" step="any" placeholder="Optional: Fast Forward"></label>
-<label>Timestamp<select id="timeMode"><option value="now">Jetzt (Live-Test)</option><option value="gpx">GPX-Zeit (historisch)</option></select></label>
+<label class="wide">Tracking URL<input id="trackingUrl" type="text" placeholder="https://raceradar.de/ingest/osmand?id=…" autocomplete="off"></label>
+<small class="wide">Direct HTTPS URL or org.traccar.client://config?url=…&amp;id=…</small>
+<div class="wide"><input id="gpxFile" type="file" accept=".gpx" hidden aria-label="GPX file"><button id="chooseGpx" type="button">Choose GPX file</button> <small id="gpxName">No file selected</small></div>
+<label>Send interval (seconds)<input id="speedSec" type="number" min="0.1" step="0.1" value="10"></label>
+<label>Current speed (km/h)<input id="speed" type="number" min="0.1" step="any" placeholder="Optional: override GPX speed"></label>
+<label>Speed variation ± (km/h)<input id="speedAmplitude" type="number" min="0" step="any" value="0"></label>
+<label>Variation cycle (seconds)<input id="speedPeriod" type="number" min="1" step="any" value="60"></label>
+<label>Timestamp<select id="timeMode"><option value="now">Now (live replay)</option><option value="gpx">GPX time (historical)</option></select></label>
+<label>Loop<select id="loop" disabled><option value="off">Off</option><option value="on">On</option></select><small id="loopHint">Load a GPX to check endpoint distance.</small></label>
 </div>
-<p><small>Current speed beschleunigt die GPX-Wiedergabe. Gesendet wird nur alle Interval-Sekunden; Zwischenpunkte werden übersprungen. Leer: ursprüngliche GPX-Zeitabstände. „Jetzt“ sendet Live-Zeit, „GPX-Zeit“ beginnt am ursprünglichen Datum.</small></p>
-<div class="actions"><button id="startBtn">Start</button><button id="stopBtn" disabled>Stop</button><button id="sosBtn" disabled>SOS einmal senden</button><span id="progress">Keine GPX geladen</span></div>
+<p><small>Current speed overrides GPX timing. Requests always respect the send interval and skip intermediate points. Leave speed empty to use GPX timing. Now sends live timestamps; GPX time preserves the historical start. Speed variation adds a smooth sine wave with a random starting phase to Current speed (requires a speed override). Speed is clamped at zero to simulate stops; the send interval stays fixed.</small></p>
+<div class="actions"><button id="startBtn">Start</button><button id="stopBtn" disabled>Stop</button><button id="sosBtn" disabled>Send SOS once</button><span id="progress">No GPX loaded</span></div>
 </section>
 <div id="map"></div>
-<p><small id="startPoint">GPX laden, dann auf die Karte klicken, um den Startpunkt zu wählen.</small> <button id="resetStartBtn" disabled>Start zurücksetzen</button></p>
+<p><small id="startPoint">Load a GPX, then click the map to choose a starting point.</small> <button id="resetStartBtn" disabled>Reset start</button></p>
 <section>
 <h2>Noise</h2>
-<label>Maximaler zufälliger Offset (Meter)<input id="noise" type="number" min="0" max="100000" step="any" value="0"></label>
-<p><small>Jede Übertragung erhält einen unabhängigen Offset innerhalb dieses Radius. 0 deaktiviert Noise. Die GPX-Strecke und Wiedergabezeiten bleiben unverändert; accuracy wird separat eingestellt.</small></p>
+<label>Maximum GPS offset (meters)<input id="noise" type="number" min="0" max="100000" step="any" value="0"></label>
+<p><small>Each request gets an independent random offset within this radius. Set 0 to disable. Source distance and playback timing stay unchanged; accuracy is set separately.</small></p>
 </section>
 <section>
-<h2>Traccar-App-Einstellungen aus der URL</h2>
+<h2>Traccar app settings from URL</h2>
 <div class="grid">
-<label>accuracy (Profil)<input id="configAccuracy" value="highest" readonly></label>
-<label>distance (Meter)<input id="configDistance" value="0" readonly></label>
-<label>interval (Sekunden)<input id="configInterval" value="10" readonly></label>
+<label>accuracy (profile)<input id="configAccuracy" value="highest" readonly></label>
+<label>distance (meters)<input id="configDistance" value="0" readonly></label>
+<label>interval (seconds)<input id="configInterval" value="10" readonly></label>
 <label>buffer<input id="configBuffer" value="true" readonly></label>
 <label>stop_detection<input id="configStop" value="false" readonly></label>
 </div>
-<p><small>Diese Werte konfigurieren die Traccar-App. Der Emulator nutzt Current speed oder den festen Sendeabstand; er puffert keine Fehler und filtert keine Stillstände.</small></p>
+<p><small>These values configure the Traccar app. The emulator uses its own playback controls and send interval; it does not buffer failed requests or filter stationary points.</small></p>
 </section>
 <section>
-<h2>Messwerte</h2>
+<h2>Measurements</h2>
 <div class="grid">
-<label>accuracy (Meter)<input id="accuracy" type="number" min="0" step="any" value="5"></label>
-<label>Current speed<small id="currentSpeed">Aktuell: —</small></label>
-<label>Akkustand · batt (%)<input id="batt" type="number" min="0" max="100" step="any" value="100"></label>
-<label>Distance (Meter)<input id="distance" readonly value="0"></label>
+<label>accuracy (meters)<input id="accuracy" type="number" min="0" step="any" value="5"></label>
+<label>Current speed<small id="currentSpeed">Current: —</small></label>
+<label>Battery · batt (%)<input id="batt" type="number" min="0" max="100" step="any" value="100"></label>
+<label>Distance (meters)<input id="distance" readonly value="0"></label>
 <label>Latitude · lat<input id="lat" readonly></label><label>Longitude · lon<input id="lon" readonly></label>
-<label class="wide">Gesendeter timestamp<input id="timestamp" readonly></label>
+<label class="wide">Sent timestamp<input id="timestamp" readonly></label>
 </div>
-<p><small>Geschwindigkeit wird in Knoten übertragen. Distance ist die berechnete Strecke ab GPX-Start und wird von Raceradar nicht gespeichert.</small></p>
-<h2>Weitere OSMAND-Parameter</h2>
+<p><small>Speed is sent in knots. Distance is calculated from the original GPX start and is not stored by Raceradar.</small></p>
+<h2>Additional OSMAND parameters</h2>
 <div class="grid">
-<label>altitude (Meter)<input id="altitude" type="number" step="any" placeholder="Aus GPX"></label>
-<label>bearing (Grad)<input id="bearing" type="number" min="0" max="360" step="any" placeholder="Aus GPX"></label>
+<label>altitude (meters)<input id="altitude" type="number" step="any" placeholder="From GPX"></label>
+<label>bearing (degrees)<input id="bearing" type="number" min="0" max="360" step="any" placeholder="From GPX"></label>
 <label>hdop<input id="hdop" type="number" min="0" step="any" placeholder="Optional"></label>
 <label>valid<select id="valid"><option>true</option><option>false</option></select></label>
 <label>charge<select id="charge"><option>false</option><option>true</option></select></label>
@@ -63,56 +67,104 @@
 <label>cell<input id="cell" placeholder="mcc,mnc,lac,cellId"></label>
 <label>wifi<input id="wifi" placeholder="macAddress,signalStrength"></label>
 </div>
-<p><small>Raceradar verwendet lat, lon, timestamp, accuracy, speed, batt, valid und alarm=sos. Weitere Werte werden mitgesendet, aktuell aber nicht gespeichert. location ist die Alternative zu lat/lon; deviceid ist die Alternative zu id in Traccar. Der Emulator nutzt lat/lon und die ID aus deiner URL.</small></p>
-<pre id="payload">Noch keine Übertragung.</pre>
+<p><small>Raceradar uses lat, lon, timestamp, accuracy, speed, batt, valid and alarm=sos. Other values are sent but currently not stored. Traccar supports location instead of lat/lon and deviceid instead of id. This emulator uses lat/lon and the ID from your URL.</small></p>
+<pre id="payload">No requests sent yet.</pre>
 </section>
-<section><h2>Log</h2><pre id="status" role="status">Bereit.</pre></section>
+<section>
+<h2>JSON · up to three devices in parallel</h2>
+<p><small>Tracking URLs also accept org.traccar.client://config links.</small></p>
+<div><input id="jsonFile" type="file" accept=".json,application/json" hidden aria-label="JSON file"><button id="chooseJson" type="button">Choose JSON file</button> <small id="jsonName">No file selected</small></div>
+<p id="jsonInfo">Load an export with device_id, measured_at, latitude, longitude and optional measurements.</p>
+<div class="device-row"><label>Device 1 · source ID<select id="jsonId0"><option value="">Load JSON</option></select></label><label>Destination tracking URL<input id="jsonUrl0" type="text" placeholder="https://raceradar.de/ingest/osmand?id=…" autocomplete="off"></label><small id="jsonStatus0">—</small></div>
+<div class="device-row"><label>Device 2 · source ID<select id="jsonId1"><option value="">Load JSON</option></select></label><label>Destination tracking URL<input id="jsonUrl1" type="text" placeholder="https://raceradar.de/ingest/osmand?id=…" autocomplete="off"></label><small id="jsonStatus1">—</small></div>
+<div class="device-row"><label>Device 3 · source ID<select id="jsonId2"><option value="">Load JSON</option></select></label><label>Destination tracking URL<input id="jsonUrl2" type="text" placeholder="https://raceradar.de/ingest/osmand?id=…" autocomplete="off"></label><small id="jsonStatus2">—</small></div>
+<div class="grid" style="margin-top:12px">
+<label>JSON interval (seconds)<input id="jsonInterval" type="number" min="0.1" step="0.1" value="10"></label>
+<label>JSON playback factor<input id="jsonFactor" type="number" min="0.1" step="any" value="1"></label>
+<label>JSON timestamp<select id="jsonTimeMode"><option value="now">Shift to now</option><option value="original">Original timestamps</option></select></label>
+</div>
+<p><small>1× = original pace; 10× = ten times faster. Relative timing between devices is preserved. Each tick sends the latest reached point per device. GPS position noise applies here too. Measurements come from JSON; speed variation, GPX overrides and SOS apply only to GPX.</small></p>
+<div class="actions"><button id="jsonStart" disabled>Start JSON replay</button><button id="jsonStop" disabled>Stop JSON replay</button></div>
+</section>
+<section><h2>Log</h2><pre id="status" role="status">Ready.</pre></section>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
 const el = id => document.getElementById(id);
 const map = L.map('map').setView([50.73,7.1],13);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'}).addTo(map);
-let points=[], idx=0, lastIndex=null, timer=null, running=false, busy=false, generation=0, playbackElapsed=0, pendingSos=false, startIndex=0, startMarker=null;
+let points=[], idx=0, lastIndex=null, timer=null, running=false, busy=false, generation=0, playbackElapsed=0, pendingSos=false, startIndex=0, startMarker=null, speedPhase=0;
+let jsonDevices=new Map(),jsonRunning=false,jsonGeneration=0,jsonTimer=null;
 const layers=L.layerGroup().addTo(map);
 function log(message){el('status').textContent=(el('status').textContent+'\n'+message).split('\n').slice(-100).join('\n');el('status').scrollTop=el('status').scrollHeight;}
-function buttons(){el('resetStartBtn').disabled=running||busy||!points.length;el('startBtn').disabled=running||busy;el('stopBtn').disabled=!running;el('sosBtn').disabled=busy||!points.length;el('gpxFile').disabled=running||busy;for(const id of ['speed','speedSec','timeMode'])el(id).disabled=running||busy;el('sosBtn').disabled=busy||!points.length||pendingSos;}
+function loopEligible(){return points.length>1&&geometry(points[0],points[points.length-1]).meters<100;}
+function loopState(){const eligible=loopEligible();if(!eligible)el('loop').value='off';el('loop').disabled=running||busy||jsonRunning||!eligible;el('loopHint').textContent=points.length>1?`Start ↔ end: ${geometry(points[0],points[points.length-1]).meters.toFixed(1)} m · ${eligible?'Loop available':'Loop requires an endpoint distance below 100 m'}`:'Load a GPX to check endpoint distance.';}
+function buttons(){jsonButtons();loopState();el('resetStartBtn').disabled=running||busy||jsonRunning||!points.length;el('startBtn').disabled=running||busy||jsonRunning;el('stopBtn').disabled=!running;el('sosBtn').disabled=busy||!points.length;el('gpxFile').disabled=running||busy||jsonRunning;el('chooseGpx').disabled=running||busy||jsonRunning;for(const id of ['speed','speedAmplitude','speedPeriod','speedSec','timeMode'])el(id).disabled=running||busy||jsonRunning;el('sosBtn').disabled=busy||jsonRunning||!points.length||pendingSos;}
 function stop(){pendingSos=false;running=false;generation++;clearTimeout(timer);timer=null;buttons();}
-function urlSettings(){try{const p=new URL(el('trackingUrl').value).searchParams;for(const [key,id] of [['accuracy','configAccuracy'],['distance','configDistance'],['interval','configInterval'],['buffer','configBuffer'],['stop_detection','configStop']])el(id).value=p.get(key)??'—';const n=Number(p.get('interval'));if(n>0)el('speedSec').value=n;}catch{}}
+function trackingTarget(value){
+ let url=new URL(value.trim());
+ if(url.protocol==='org.traccar.client:'){
+  if(url.host!=='config'||!['','/'].includes(url.pathname)||url.hash)throw Error('Invalid Traccar configuration link.');
+  const params=url.searchParams,target=params.get('url');
+  if(!target)throw Error('Missing server URL in Traccar configuration link.');
+  url=new URL(target);
+  for(const [key,val] of params)if(key!=='url')url.searchParams.set(key,val);
+ }
+ if(url.protocol!=='https:'||url.hostname!=='raceradar.de'||url.pathname!=='/ingest/osmand'||url.username||url.password||url.hash||!['','443'].includes(url.port))throw Error('A Raceradar OSMAND URL or Traccar configuration link is required.');
+ return url;
+}
+function urlSettings(){try{const p=trackingTarget(el('trackingUrl').value).searchParams;for(const [key,id] of [['accuracy','configAccuracy'],['distance','configDistance'],['interval','configInterval'],['buffer','configBuffer'],['stop_detection','configStop']])el(id).value=p.get(key)??'—';const n=Number(p.get('interval'));if(n>0)el('speedSec').value=n;}catch{}}
+el('chooseGpx').addEventListener('click',()=>el('gpxFile').click());
+el('chooseJson').addEventListener('click',()=>el('jsonFile').click());
 el('trackingUrl').addEventListener('change',urlSettings);
 el('speed').addEventListener('input',()=>{if(points.length)showPoint(lastIndex??0);});
 function geometry(a,b){const rad=x=>x*Math.PI/180;const phi1=rad(a.lat),phi2=rad(b.lat),dl=rad(b.lon-a.lon),dp=phi2-phi1;const h=Math.sin(dp/2)**2+Math.cos(phi1)*Math.cos(phi2)*Math.sin(dl/2)**2;return {meters:6371000*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h))),bearing:(Math.atan2(Math.sin(dl)*Math.cos(phi2),Math.cos(phi1)*Math.sin(phi2)-Math.sin(phi1)*Math.cos(phi2)*Math.cos(dl))*180/Math.PI+360)%360};}
 el('gpxFile').addEventListener('change',async e=>{
  stop();points=[];lastIndex=null;idx=0;startIndex=0;startMarker=null;layers.clearLayers();buttons();
- try{const file=e.target.files[0];if(!file)return;const xml=new DOMParser().parseFromString(await file.text(),'application/xml');if(xml.querySelector('parsererror'))throw Error('Ungültiges GPX-XML.');
+ try{const file=e.target.files[0];el('gpxName').textContent=file?.name||'No file selected';if(!file)return;const xml=new DOMParser().parseFromString(await file.text(),'application/xml');if(xml.querySelector('parsererror'))throw Error('Invalid GPX XML.');
  for(const pt of xml.getElementsByTagNameNS('*','trkpt')){const lat=parseFloat(pt.getAttribute('lat')),lon=parseFloat(pt.getAttribute('lon'));if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180)continue;const text=tag=>pt.getElementsByTagNameNS('*',tag)[0]?.textContent;const parsed=new Date(text('time')||'');points.push({lat,lon,time:Number.isFinite(parsed.getTime())?parsed:null,altitude:parseFloat(text('ele'))});}
- if(!points.length)throw Error('Keine gültigen Trackpunkte.');let total=0;points.forEach((p,i)=>{const g=i?geometry(points[i-1],p):{meters:0,bearing:0};total+=g.meters;p.distance=total;p.bearing=g.bearing;const seconds=i&&p.time&&points[i-1].time?(p.time-points[i-1].time)/1000:null;p.speed=seconds>0?g.meters/seconds*3.6:null;});
- map.setView([points[0].lat,points[0].lon],15);L.polyline(points.map(p=>[p.lat,p.lon]),{weight:2}).addTo(layers);el('progress').textContent=`0 / ${points.length}`;log(`${points.length} Punkte geladen.`);selectStart(0);
+ if(!points.length)throw Error('No valid track points.');let total=0;points.forEach((p,i)=>{const g=i?geometry(points[i-1],p):{meters:0,bearing:0};total+=g.meters;p.distance=total;p.bearing=g.bearing;const seconds=i&&p.time&&points[i-1].time?(p.time-points[i-1].time)/1000:null;p.speed=seconds>0?g.meters/seconds*3.6:null;});
+ map.setView([points[0].lat,points[0].lon],15);L.polyline(points.map(p=>[p.lat,p.lon]),{weight:2}).addTo(layers);el('progress').textContent=`0 / ${points.length}`;log(`${points.length} points loaded.`);selectStart(0);
  }catch(err){log(err.message);}buttons();
 });
 function nearestPoint(position){let best=0,distance=Infinity;points.forEach((p,i)=>{const meters=geometry(p,position).meters;if(meters<distance){distance=meters;best=i;}});return best;}
 function selectStart(i){
- if(running||busy||!points.length)return;
+ if(running||busy||jsonRunning||!points.length)return;
  startIndex=i;lastIndex=null;playbackElapsed=0;idx=i;
  const p=points[i];
  if(startMarker)startMarker.setLatLng([p.lat,p.lon]);
  else startMarker=L.circleMarker([p.lat,p.lon],{radius:8,color:'#167a38',fillOpacity:1}).addTo(layers);
- el('startPoint').textContent=`Start: GPX-Punkt ${i+1} / ${points.length} · ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}. Zum Ändern auf die Karte klicken.`;
- el('progress').textContent=`Start bei ${i+1} / ${points.length}`;showPoint(i);
+ el('startPoint').textContent=`Start: GPX point ${i+1} / ${points.length} · ${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}. Click the map to change it.`;
+ el('progress').textContent=`Start at ${i+1} / ${points.length}`;showPoint(i);
 }
-map.on('click',event=>{if(points.length&&!running&&!busy)selectStart(nearestPoint({lat:event.latlng.lat,lon:event.latlng.lng}));});
+map.on('click',event=>{if(points.length&&!running&&!busy&&!jsonRunning)selectStart(nearestPoint({lat:event.latlng.lat,lon:event.latlng.lng}));});
 el('resetStartBtn').addEventListener('click',()=>selectStart(0));
-function showPoint(i){const p=points[i];el('lat').value=p.lat;el('lon').value=p.lon;el('distance').value=p.distance.toFixed(1);el('currentSpeed').textContent=`Aktuell: ${el('speed').value || (p.speed==null?'—':p.speed.toFixed(1))} km/h`;}
-function numberValue(id,fallback){const input=el(id);if(!input.checkValidity())throw Error(`Ungültiger Wert: ${id}`);if(!input.value.trim())return fallback;const n=Number(input.value);if(!Number.isFinite(n))throw Error(`Ungültiger Wert: ${id}`);return n;}
-function playbackTimeline(interval){
+function showPoint(i){const p=points[i];el('lat').value=p.lat;el('lon').value=p.lon;el('distance').value=p.distance.toFixed(1);el('currentSpeed').textContent=`Current: ${effectiveSpeed(p.speed)?.toFixed(1)??'—'} km/h`;}
+function numberValue(id,fallback){const input=el(id);if(!input.checkValidity())throw Error(`Invalid value: ${id}`);if(!input.value.trim())return fallback;const n=Number(input.value);if(!Number.isFinite(n))throw Error(`Invalid value: ${id}`);return n;}
+function variationSpeed(base,amplitude,period,elapsed,phase=0){
+ return Math.max(0,base+amplitude*Math.sin(2*Math.PI*elapsed/(period*1000)+phase));
+}
+function variationDistance(base,amplitude,period,from,to,phase=0){
+ if(to<=from)return 0;
+ if(!amplitude)return base/3.6*(to-from)/1000;
+ const steps=Math.min(4096,Math.max(1,Math.ceil((to-from)/(period*1000/128)))),step=(to-from)/steps;
+ let distance=0;for(let i=0;i<steps;i++)distance+=variationSpeed(base,amplitude,period,from+(i+.5)*step,phase)/3.6*step/1000;
+ return distance;
+}
+function effectiveSpeed(fallback){
+ const base=numberValue('speed',fallback);
+ if(base==null||!el('speed').value.trim())return base;
+ return variationSpeed(base,numberValue('speedAmplitude',0),numberValue('speedPeriod',60),playbackElapsed,speedPhase);
+}
+function playbackTimeline(interval,origin=startIndex){
  const kmh=numberValue('speed',null);
- if(kmh!==null&&kmh<=0)throw Error('Current speed muss größer als 0 sein.');
+ if(kmh!==null&&kmh<=0)throw Error('Current speed must be greater than 0.');
  const times=[0];
  for(let i=1;i<points.length;i++){
   const seconds=points[i].time&&points[i-1].time?(points[i].time-points[i-1].time)/1000:NaN;
   const duration=kmh!==null?(points[i].distance-points[i-1].distance)/(kmh/3.6)*1000:Number.isFinite(seconds)&&seconds>=0?seconds*1000:interval;
   times.push(times[i-1]+duration);
  }
- const offset=times[startIndex];return times.map(time=>time-offset);
+ const offset=times[origin];return times.map(time=>time-offset);
 }
 function playbackIndex(times,elapsed){
  let lo=0,hi=times.length;
@@ -128,31 +180,145 @@ function noisyPosition(p,radius,random=Math.random){
  const shiftedLon=lon+Math.atan2(Math.sin(angle)*Math.sin(delta)*Math.cos(lat),Math.cos(delta)-Math.sin(lat)*Math.sin(shiftedLat));
  return {lat:shiftedLat*180/Math.PI,lon:((shiftedLon*180/Math.PI+540)%360)-180};
 }
-function pointPayload(i,sos){const p=points[i];let timestamp=el('timeMode').value==='now'?new Date():p.time;if(el('timeMode').value==='gpx'&&el('speed').value.trim()&&points[startIndex].time)timestamp=new Date(points[startIndex].time.getTime()+playbackElapsed);if(!timestamp)throw Error('Dieser GPX-Punkt hat keinen Zeitstempel. Bitte „Jetzt“ auswählen.');const kmh=numberValue('speed',p.speed);const position=noisyPosition(p,numberValue('noise',0));const data={lat:position.lat,lon:position.lon,timestamp:timestamp.toISOString(),accuracy:numberValue('accuracy',undefined),batt:numberValue('batt',undefined),valid:el('valid').value,charge:el('charge').value,distance:p.distance};if(kmh!=null)data.speed=kmh/1.852;
+function pointPayload(i,sos){const p=points[i];let timestamp=el('timeMode').value==='now'?new Date():p.time;if(el('timeMode').value==='gpx'&&(el('speed').value.trim()||el('loop').value==='on')&&points[startIndex].time)timestamp=new Date(points[startIndex].time.getTime()+playbackElapsed);if(!timestamp)throw Error('This GPX point has no timestamp. Select Now to continue.');const kmh=effectiveSpeed(p.speed);const position=noisyPosition(p,numberValue('noise',0));const data={lat:position.lat,lon:position.lon,timestamp:timestamp.toISOString(),accuracy:numberValue('accuracy',undefined),batt:numberValue('batt',undefined),valid:el('valid').value,charge:el('charge').value,distance:p.distance};if(kmh!=null)data.speed=kmh/1.852;
  for(const [key,fallback] of [['altitude',p.altitude],['bearing',p.bearing],['hdop',undefined]]){const n=numberValue(key,fallback);if(Number.isFinite(n))data[key]=n;}
  for(const key of ['driverUniqueId','cell','wifi'])if(el(key).value.trim())data[key]=el(key).value.trim();if(sos)data.alarm='sos';for(const key of Object.keys(data))if(data[key]===undefined)delete data[key];return data;}
-async function send(i,sos=false){if(busy)return false;busy=true;buttons();try{const url=el('trackingUrl').value.trim();if(!url)throw Error('Tracking-URL fehlt.');const data=pointPayload(i,sos);showPoint(i);el('lat').value=data.lat;el('lon').value=data.lon;el('timestamp').value=data.timestamp;el('payload').textContent=JSON.stringify(data,null,2);const resp=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,data})});const text=await resp.text();if(!resp.ok)throw Error(`HTTP ${resp.status}: ${text}`);lastIndex=i;log(`${sos?'SOS einmal':'Punkt '+(i+1)} · ${data.timestamp} · ${resp.status} ${text}`);L.circleMarker([data.lat,data.lon],{radius:4,color:sos?'#b42318':'#2266bb'}).addTo(layers);map.panTo([data.lat,data.lon]);return true;}catch(err){log(`Fehler: ${err.message}`);stop();return false;}finally{busy=false;buttons();}}
+async function send(i,sos=false){if(busy)return false;busy=true;buttons();try{const rawUrl=el('trackingUrl').value.trim();if(!rawUrl)throw Error('Missing tracking URL.');const url=trackingTarget(rawUrl).href;const data=pointPayload(i,sos);showPoint(i);el('lat').value=data.lat;el('lon').value=data.lon;el('timestamp').value=data.timestamp;el('payload').textContent=JSON.stringify(data,null,2);const resp=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url,data})});const text=await resp.text();if(!resp.ok)throw Error(`HTTP ${resp.status}: ${text}`);lastIndex=i;log(`${sos?'SOS once':'Point '+(i+1)} · ${data.timestamp} · ${resp.status} ${text}`);L.circleMarker([data.lat,data.lon],{radius:4,color:sos?'#b42318':'#2266bb'}).addTo(layers);map.panTo([data.lat,data.lon]);return true;}catch(err){log(`Error: ${err.message}`);stop();return false;}finally{busy=false;buttons();}}
 el('startBtn').addEventListener('click',()=>{
- if(!points.length){log('Bitte GPX laden.');return;}
- if(!el('trackingUrl').value.trim()){log('Tracking-URL fehlt.');return;}
- if(!el('speed').checkValidity()||!el('noise').checkValidity()||!el('speedSec').checkValidity()){log('Bitte gültige Werte für Interval, Current speed und Noise eingeben.');return;}
- let times,interval;
- try{interval=numberValue('speedSec',10)*1000;if(interval<100)throw Error('Interval muss mindestens 0,1 Sekunden sein.');times=playbackTimeline(interval);}catch(err){log(err.message);return;}
- idx=startIndex;playbackElapsed=0;running=true;const run=++generation,start=Date.now();buttons();log('Gestartet.');
+ if(jsonRunning)return;
+ if(!points.length){log('Please load a GPX.');return;}
+ if(!el('trackingUrl').value.trim()){log('Missing tracking URL.');return;}
+ if(!el('speed').checkValidity()||!el('speedAmplitude').checkValidity()||!el('speedPeriod').checkValidity()||!el('noise').checkValidity()||!el('speedSec').checkValidity()){log('Enter valid interval, speed, speed variation and GPS noise values.');return;}
+ let times,interval,base,amplitude,period;
+ try{base=numberValue('speed',null);amplitude=numberValue('speedAmplitude',0);period=numberValue('speedPeriod',60);if(amplitude>0&&base===null)throw Error('Set Current speed to use speed variation.');if(period<1)throw Error('Variation cycle must be at least one second.');interval=numberValue('speedSec',10)*1000;if(interval<100)throw Error('Interval must be at least 0.1 seconds.');times=playbackTimeline(interval);}catch(err){log(err.message);return;}
+ idx=startIndex;playbackElapsed=0;speedPhase=Math.random()*2*Math.PI;running=true;const run=++generation,start=Date.now(),loop=el('loop').value==='on'&&loopEligible();let cycleStart=start,origin=startIndex,restart=false,lap=1,motionElapsed=0,previousElapsed=0;buttons();log('Playback started.');
  async function next(){
   if(!running||run!==generation)return;
   if(busy){timer=setTimeout(next,100);return;}
-  const sentAt=Date.now();playbackElapsed=sentAt-start;idx=Math.max(startIndex,playbackIndex(times,playbackElapsed));
+  const sentAt=Date.now();playbackElapsed=sentAt-start;
+  if(base!==null&&amplitude>0)motionElapsed+=variationDistance(base,amplitude,period,previousElapsed,playbackElapsed,speedPhase)/base*3600;
+  previousElapsed=playbackElapsed;
+  if(restart){cycleStart=sentAt;motionElapsed=0;origin=0;times=playbackTimeline(interval,0);restart=false;}
+  const sourceElapsed=base!==null&&amplitude>0?motionElapsed:sentAt-cycleStart;
+  idx=Math.max(origin,playbackIndex(times,sourceElapsed));
   const sos=pendingSos;pendingSos=false;const ok=await send(idx,sos);
   if(!running||run!==generation||!ok)return;
-  el('progress').textContent=`${idx+1} / ${points.length}`;
-  if(idx===points.length-1){stop();log('Wiedergabe beendet.');return;}
+  el('progress').textContent=`${idx+1} / ${points.length}${loop?' · Lap '+lap:''}`;
+  if(idx===points.length-1){if(!loop){stop();log('Playback finished.');return;}restart=true;lap++;log(`Loop: lap ${lap} starts at the GPX beginning on the next tick.`);}
   timer=setTimeout(next,Math.max(0,nextSendAt(start,sentAt,Date.now(),interval)-Date.now()));
  }
  next();
 });
-el('stopBtn').addEventListener('click',()=>{stop();log('Gestoppt.');});
-el('sosBtn').addEventListener('click',()=>{if(running){pendingSos=true;buttons();log('SOS für die nächste Interval-Übertragung vorgemerkt.');}else send(lastIndex??startIndex,true);});
+el('stopBtn').addEventListener('click',()=>{stop();log('Stopped.');});
+el('sosBtn').addEventListener('click',()=>{if(running){pendingSos=true;buttons();log('SOS queued for the next scheduled request.');}else send(lastIndex??startIndex,true);});
+// JSON replay: independent device requests on a shared playback clock.
+const jsonLayers=L.layerGroup().addTo(map);
+const deviceColors=['#2266bb','#a344aa','#dd7b16'];
+function parseDeviceExport(rows){
+ if(!Array.isArray(rows)||!rows.length)throw Error('Expected a JSON array of positions.');
+ const devices=new Map();
+ for(const row of rows){
+  if(!row||typeof row!=='object'||typeof row.device_id!=='string'||!row.device_id.trim())throw Error('Every position requires a device_id.');
+  const lat=row.latitude,lon=row.longitude,time=new Date(row.measured_at);
+  if(typeof lat!=='number'||typeof lon!=='number'||!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180||typeof row.measured_at!=='string'||!Number.isFinite(time.getTime()))throw Error('Invalid coordinates or measured_at in JSON.');
+  const p={lat,lon,time};
+  for(const [field,target,max] of [['accuracy_m','accuracy',Infinity],['speed_mps','speed',Infinity],['battery_percent','batt',100]]){
+   const value=row[field];if(value==null)continue;
+   if(typeof value!=='number'||!Number.isFinite(value)||value<0||value>max)throw Error(`Invalid measurement: ${field}`);
+   p[target]=field==='speed_mps'?value*3600/1852:value;
+  }
+  if(!devices.has(row.device_id))devices.set(row.device_id,[]);
+  devices.get(row.device_id).push(p);
+ }
+ for(const track of devices.values())track.sort((a,b)=>a.time-b.time);
+ return devices;
+}
+function jsonButtons(){
+ el('jsonFile').disabled=running||busy||jsonRunning;el('chooseJson').disabled=running||busy||jsonRunning;
+ el('jsonStart').disabled=running||busy||jsonRunning||!jsonDevices.size;
+ el('jsonStop').disabled=!jsonRunning;
+ for(const id of ['jsonInterval','jsonFactor','jsonTimeMode',...Array.from({length:3},(_,i)=>`jsonId${i}`),...Array.from({length:3},(_,i)=>`jsonUrl${i}`)])el(id).disabled=running||busy||jsonRunning;
+}
+function stopJson(){jsonRunning=false;jsonGeneration++;clearTimeout(jsonTimer);jsonTimer=null;buttons();jsonButtons();}
+function fillDeviceChoices(){
+ const ids=[...jsonDevices.keys()];
+ for(let i=0;i<3;i++){
+  const select=el(`jsonId${i}`);select.replaceChildren();
+  const none=document.createElement('option');none.value='';none.textContent='Do not replay';select.append(none);
+  for(const id of ids){const option=document.createElement('option');option.value=id;option.textContent=`${id} · ${jsonDevices.get(id).length} points`;select.append(option);}
+  select.value=ids[i]||'';el(`jsonStatus${i}`).textContent=ids[i]?'Ready':'No selection';
+ }
+}
+el('jsonFile').addEventListener('change',async event=>{
+ stopJson();jsonDevices=new Map();jsonLayers.clearLayers();jsonButtons();
+ try{
+  const file=event.target.files[0];el('jsonName').textContent=file?.name||'No file selected';if(!file)return;
+  jsonDevices=parseDeviceExport(JSON.parse(await file.text()));fillDeviceChoices();
+  const coords=[];let color=0;
+  for(const track of jsonDevices.values()){const path=track.map(p=>[p.lat,p.lon]);coords.push(...path);L.polyline(path,{weight:2,color:deviceColors[color++%3]}).addTo(jsonLayers);}
+  map.fitBounds(coords,{padding:[20,20],maxZoom:15});
+  el('jsonInfo').textContent=`${jsonDevices.size} devices · ${[...jsonDevices.values()].reduce((n,p)=>n+p.length,0)} positions · sorted chronologically`;
+  log('JSON imported. Choose devices and assign destination tracking URLs.');
+ }catch(err){jsonDevices=new Map();fillDeviceChoices();el('jsonInfo').textContent=`Error: ${err.message}`;log(`JSON: ${err.message}`);}
+ jsonButtons();
+});
+function jsonChannels(){
+ const channels=[],ids=new Set(),targets=new Set();
+ for(let slot=0;slot<3;slot++){
+  const id=el(`jsonId${slot}`).value;if(!id)continue;
+  if(ids.has(id))throw Error('Each source device ID can only be selected once.');ids.add(id);
+  const track=jsonDevices.get(id);if(!track)throw Error('Device ID was not found in the import.');
+  const url=el(`jsonUrl${slot}`).value.trim();let parsed;
+  try{parsed=trackingTarget(url);}catch{throw Error(`Missing or invalid tracking URL for device ${slot+1}.`);}
+  if(parsed.protocol!=='https:'||parsed.hostname!=='raceradar.de'||parsed.pathname!=='/ingest/osmand'||parsed.username||parsed.password||parsed.hash||!['','443'].includes(parsed.port))throw Error(`Device ${slot+1}: a Raceradar OSMAND URL is required.`);
+  const credential=parsed.searchParams.get('id')||parsed.searchParams.get('token');if(!credential)throw Error(`Device ${slot+1}: missing destination ID/token in tracking URL.`);
+  if(targets.has(credential))throw Error('Use a different destination tracking ID for each device.');targets.add(credential);
+  channels.push({slot,id,url:parsed.href,track,last:-1,done:false,sent:0});
+ }
+ if(!channels.length)throw Error('Select at least one device.');
+ return channels;
+}
+function exportPayload(point,mode,start,origin,factor,noise){
+ const position=noisyPosition(point,noise);
+ const timestamp=mode==='now'?new Date(start+(point.time.getTime()-origin)/factor):point.time;
+ const data={...position,timestamp:timestamp.toISOString(),valid:'true'};
+ for(const key of ['accuracy','speed','batt'])if(point[key]!=null)data[key]=point[key];
+ return data;
+}
+async function sendJsonChannel(channel,index,options){
+ const data=exportPayload(channel.track[index],options.mode,options.start,options.origin,options.factor,numberValue('noise',0));
+ const resp=await fetch('/api/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:channel.url,data})});
+ const text=await resp.text();if(!resp.ok)throw Error(`HTTP ${resp.status}: ${text}`);
+ channel.last=index;channel.sent++;
+ el(`jsonStatus${channel.slot}`).textContent=`${index+1}/${channel.track.length} · ${channel.sent} sent · HTTP ${resp.status}`;
+ log(`JSON device ${channel.slot+1} · Point ${index+1} · ${data.timestamp} · ${resp.status} ${text}`);
+ L.circleMarker([data.lat,data.lon],{radius:4,color:deviceColors[channel.slot]}).addTo(jsonLayers);
+}
+function exportIndex(track,sourceTime){
+ let lo=0,hi=track.length;while(lo<hi){const mid=Math.floor((lo+hi)/2);if(track[mid].time.getTime()<=sourceTime)lo=mid+1;else hi=mid;}return lo-1;
+}
+el('jsonStart').addEventListener('click',()=>{
+ let channels,interval,factor;
+ try{channels=jsonChannels();interval=numberValue('jsonInterval',10)*1000;factor=numberValue('jsonFactor',1);numberValue('noise',0);if(interval<100||factor<=0)throw Error('Interval must be at least 0.1 s and playback factor must be positive.');}catch(err){log(`JSON: ${err.message}`);return;}
+ const options={start:Date.now(),origin:Math.min(...channels.map(c=>c.track[0].time.getTime())),factor,mode:el('jsonTimeMode').value};
+ const run=++jsonGeneration;jsonRunning=true;buttons();jsonButtons();log('JSON replay started.');
+ async function tick(){
+  if(!jsonRunning||run!==jsonGeneration)return;
+  const sentAt=Date.now(),sourceTime=options.origin+(sentAt-options.start)*factor;
+  const jobs=channels.filter(c=>!c.done).map(async channel=>{
+   const index=exportIndex(channel.track,sourceTime);if(index<0||index===channel.last)return;
+   try{await sendJsonChannel(channel,index,options);if(index===channel.track.length-1){channel.done=true;el(`jsonStatus${channel.slot}`).textContent+=' · Finished';}}
+   catch(err){channel.done=true;el(`jsonStatus${channel.slot}`).textContent=`Error: ${err.message}`;log(`JSON device ${channel.slot+1}: ${err.message}`);}
+  });
+  await Promise.allSettled(jobs);
+  if(!jsonRunning||run!==jsonGeneration)return;
+  if(channels.every(c=>c.done)){stopJson();log('JSON replay finished.');return;}
+  jsonTimer=setTimeout(tick,Math.max(0,nextSendAt(options.start,sentAt,Date.now(),interval)-Date.now()));
+ }
+ tick();
+});
+el('jsonStop').addEventListener('click',()=>{stopJson();log('JSON replay stopped.');});
+
 </script>
 </body>
 </html>
